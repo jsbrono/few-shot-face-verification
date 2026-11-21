@@ -1,0 +1,22 @@
+# ImageNet-pretrained ResNet-18 trained with batch-hard triplet loss; cosine similarity to the
+# mean reference embedding at test time.
+model:
+  backbone: resnet18
+  pretrained: true
+  embed_dim: 128
+  head: cosine
+
+data:
+  casia_dir: data/casia-webface
+  lfw_dir: data/lfw-deepfunneled
+  lfw_pairs: data/pairs.txt
+  image_size: 112
+
+train:
+  objective: triplet
+  margin: 0.2
+  epochs: 20
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  identities_per_batch: 32
+  images_per_identity: 4

@@ -1,0 +1,23 @@
+# ImageNet-pretrained ResNet-18 with the learned differential head, trained end to end with
+# binary cross-entropy on episodes of 1-5 references and a query.
+model:
+  backbone: resnet18
+  pretrained: true
+  embed_dim: 128
+  head: differential
+  head_hidden_dim: 256
+
+data:
+  casia_dir: data/casia-webface
+  lfw_dir: data/lfw-deepfunneled
+  lfw_pairs: data/pairs.txt
+  image_size: 112
+
+train:
+  objective: bce
+  epochs: 20
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  batch_size: 32
+  episodes_per_epoch: 20000
+  max_refs: 5
