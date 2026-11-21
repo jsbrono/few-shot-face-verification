@@ -6,6 +6,7 @@ import torch
 from torchvision.io import read_image
 from torch.utils.data import Dataset
 import pandas as pd
+import random
 
 def create_index_map(filepath, num_refs=3):
     index_map = {}
@@ -154,7 +155,6 @@ class SignatureDynamicDataset(Dataset):
 
         return reference_data, query_data, label, mask
     
-
 def create_index_map_lfw(image_path,matches_csv,mismatches_csv):
     index_map = {}
     idx = 0
@@ -199,7 +199,7 @@ class LFWDataset(Dataset):
                 [
                     transforms.ConvertImageDtype(torch.float32),
                     normalise,
-                    transforms.Resize((224, 224)),
+                    transforms.Resize((250, 250)),
                     # transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),  
                     # transforms.RandomHorizontalFlip(),                   
                     # transforms.RandomVerticalFlip(p=0.2),                 
@@ -225,9 +225,102 @@ class LFWDataset(Dataset):
     def __getitem__(self, index: int):
         query_location,reference_location,label = self.index_map[index]
 
-        reference_data = self.transforms(read_image(reference_location))
+        reference_data = self.transforms(read_image(reference_location)).unsqueeze(0)
         query_data = self.transforms(read_image(query_location))
         label = torch.tensor(label, dtype=torch.float32)
-
-        return reference_data,query_data,label
+        mask = torch.ones(reference_data.size(0), dtype=torch.float32)
+        return reference_data,query_data,label,mask
     
+def create_index_map_casia(image_path,max_refs=3):
+    index_map = {}
+    index = 0
+    num_positives = 0
+    num_negatives = 0
+    persons_folders = os.listdir(image_path)
+
+    for person in persons_folders:
+        # doing small case for now
+        persons_image_path = [os.path.join(image_path, person, img) for img in os.listdir(os.path.join(image_path, person))]
+
+        positive_sample = random.choice(persons_image_path)
+
+        reference_image_locations = random.sample([img for img in persons_image_path if img!=positive_sample],k=min(max_refs,len(persons_image_path)-1))
+
+        negative_person = random.choice([p for p in persons_folders if p != person])
+        neg_person_images = [os.path.join(image_path, negative_person, img) for img in os.listdir(os.path.join(image_path, negative_person))]
+        negative_sample = random.choice(neg_person_images)
+
+        mask = [1] * len(reference_image_locations)
+        num_missing = max_refs - len(reference_image_locations)
+        reference_image_locations += [None] * num_missing
+        mask += [0] * num_missing
+
+        index_map[index] = (reference_image_locations,positive_sample,1,mask)
+        index+=1
+        num_positives+=1
+
+        index_map[index] = (reference_image_locations,negative_sample,0,mask)
+        index+=1
+        num_negatives+=1
+
+    mapping_list = list(index_map.values())
+    random.shuffle(mapping_list)
+    index_map = {i: v for i, v in enumerate(mapping_list)}
+    return index_map, num_positives, num_negatives
+
+
+class CasiaDataset(Dataset):
+    def __init__(self, filepath,train=True):
+        image_path = os.path.join(filepath, "casia-webface")
+
+        self.index_map,self.num_positives,self.num_negatives = create_index_map_casia(image_path)
+        # normalise = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+        #                 std=[0.229, 0.224, 0.225])
+        if train == True:
+            self.transforms = transforms.Compose(
+                [
+                    transforms.ConvertImageDtype(torch.float32),
+                    # normalise,
+                    transforms.Resize((250, 250)),
+                    # transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),  
+                    # transforms.RandomHorizontalFlip(),                   
+                    # transforms.RandomVerticalFlip(p=0.2),                 
+                    # transforms.RandomRotation(15),                        
+                    # transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1), 
+                    # transforms.GaussianBlur(kernel_size=(3, 5), sigma=(0.1, 2.0)), 
+                    # transforms.RandomErasing(p=0.2, scale=(0.02, 0.1), ratio=(0.3, 3.3)),  
+                    transforms.ConvertImageDtype(torch.float32),
+                ]
+            )        
+        else:
+            self.transforms = transforms.Compose(
+                [
+                    transforms.Resize((250, 250)),
+                    transforms.ConvertImageDtype(torch.float32),
+                    # normalise
+                ]
+            )        
+
+    def __len__(self):
+        return len(self.index_map)
+
+    def __getitem__(self, index: int):
+        reference_locations, query_location, label, mask = self.index_map[index]
+
+        query_data = self.transforms(read_image(query_location))
+
+        reference_data = []
+        for ref_loc in reference_locations:
+            if ref_loc is None:
+                ref_tensor = torch.zeros_like(query_data)
+            else:
+                ref_tensor = self.transforms(read_image(ref_loc))
+            reference_data.append(ref_tensor)
+
+        reference_data = torch.stack(reference_data,dim=0)
+
+        label = torch.tensor(label, dtype=torch.float32)
+        mask = torch.tensor(mask,dtype= torch.float32)
+
+        return reference_data,query_data,label,mask
+  

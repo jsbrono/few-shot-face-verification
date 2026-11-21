@@ -1,5 +1,5 @@
 import kagglehub
-from datasets.datasets import SignatureDataset,SignatureDynamicDataset, LFWDataset
+from datasets.datasets import SignatureDataset,SignatureDynamicDataset, LFWDataset, CasiaDataset
 from torch.utils.data import DataLoader
 
 def make_signature_dataloaders(batch_size=256,shuffle=True):
@@ -41,6 +41,22 @@ def make_lfw_dataloaders(batch_size=256,shuffle=True,num_workers:int = 0):
 
     train_dataset = LFWDataset(path,train=True)
     test_dataset = LFWDataset(path,train=False)
+
+    train_loader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=shuffle,num_workers=num_workers
+    )
+
+    test_loader = DataLoader(
+        test_dataset, batch_size=batch_size, shuffle=shuffle,num_workers=num_workers
+    )
+    return train_loader,test_loader,train_dataset.num_positives,train_dataset.num_negatives
+
+
+
+def make_casia_dataloaders(batch_size=256,shuffle=True,num_workers:int = 0):
+    path = kagglehub.dataset_download("ntl0601/casia-webface")
+    train_dataset = CasiaDataset(path,train=True)
+    test_dataset = CasiaDataset(path,train=False)
 
     train_loader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=shuffle,num_workers=num_workers

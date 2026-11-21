@@ -5,7 +5,7 @@ import torchvision.models as models
 import torch.nn.functional as F
 
 
-class EmbeddingCNN2D(nn.Module):
+class DifferentialEmbeddingCNN2D(nn.Module):
     """
     CNN followed by a fully connected layer for embedding extraction and prediction.
 
@@ -20,7 +20,7 @@ class EmbeddingCNN2D(nn.Module):
     """
 
     def __init__(self):
-        super(EmbeddingCNN2D, self).__init__()
+        super(DifferentialEmbeddingCNN2D, self).__init__()
 
         self._embeddings_dim = 1024
         self._mlp_input_dim = 100
@@ -134,6 +134,148 @@ class EmbeddingCNN2D(nn.Module):
         """
         return self.cnn(data.unsqueeze(1))
 
+class DifferentialEmbeddingCNN3D(nn.Module):
+    def __init__(self):
+        super(DifferentialEmbeddingCNN3D, self).__init__()
+
+
+        resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        self.cnn = nn.Sequential(*list(resnet.children())[:-1])
+        self.ann =  nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(resnet.fc.in_features*2, resnet.fc.in_features//2),
+            nn.ReLU(),
+            nn.Linear(resnet.fc.in_features//2,32),
+            nn.ReLU(),
+            nn.Linear(32,1)
+        )
+    
+    def forward_slow(self, reference_data: torch.Tensor, unknown_data: torch.Tensor, mask: torch.Tensor):
+
+        B, R, C, H, W = reference_data.shape
+        mask = mask.squeeze().bool()
+
+        reference_data_stacked = reference_data.view(B * R, C, H, W)
+        flat_mask = mask.view(-1).bool()
+        valid_data = reference_data_stacked[flat_mask]
+
+        valid_embeddings = self.get_embedding(valid_data) 
+
+        reference_embeddings = torch.zeros(
+            B * R, valid_embeddings.shape[-1],
+            device=reference_data.device,
+            dtype=valid_embeddings.dtype
+        )
+        reference_embeddings[flat_mask] = valid_embeddings
+        reference_embeddings = reference_embeddings.view(B, R, -1) 
+
+        query_embedding = self.get_embedding(unknown_data)  
+
+        refs_i = reference_embeddings.unsqueeze(2)  
+        refs_j = reference_embeddings.unsqueeze(1)  
+        pairwise_diffs = torch.abs(refs_i - refs_j) 
+
+        valid_mask = (mask.unsqueeze(2) & mask.unsqueeze(1)) 
+        triu_mask = torch.triu(torch.ones(R, R, device=mask.device, dtype=torch.bool), diagonal=1)
+        full_pair_mask = valid_mask & triu_mask 
+
+        # reference_pairwise_diffs = pairwise_diffs[full_pair_mask] 
+
+        pairwise_sum = (pairwise_diffs * full_pair_mask.unsqueeze(-1)).sum(dim=(1, 2))
+        pairwise_count = full_pair_mask.sum(dim=(1, 2)).clamp(min=1).unsqueeze(-1)  
+        mean_reference_pairwise = pairwise_sum / pairwise_count 
+
+        query_diffs = torch.abs(query_embedding.unsqueeze(1) - reference_embeddings) 
+        query_diffs = query_diffs * mask.unsqueeze(-1)  
+
+        query_sum = query_diffs.sum(dim=1)  
+        query_count = mask.sum(dim=1).clamp(min=1).unsqueeze(-1)
+        mean_query_diffs = query_sum / query_count
+
+        #testing
+        # mean_query_diffs = query_embedding
+
+        x = torch.cat([mean_reference_pairwise, mean_query_diffs], dim=1) 
+        x = self.ann(x)
+
+        return x
+
+    def forward(self, reference_data: torch.Tensor, unknown_data: torch.Tensor, mask: torch.Tensor):
+
+        B, R, C, H, W = reference_data.shape
+
+        reference_data_stacked = reference_data.view(B * R, C, H, W)
+        flat_mask = mask.view(-1).bool()
+        valid_data = reference_data_stacked[flat_mask]
+
+        valid_embeddings = self.get_embedding(valid_data)  
+
+        reference_embeddings = torch.zeros(
+            B * R, valid_embeddings.shape[-1],
+            device=reference_data.device,
+            dtype=valid_embeddings.dtype
+        )
+        reference_embeddings[flat_mask] = valid_embeddings
+        reference_embeddings = reference_embeddings.view(B, R, -1) 
+
+        query_embedding = self.get_embedding(unknown_data) 
+
+        valid_refs_mask = mask.bool()
+        anchor = reference_embeddings[:, 0:1, :] 
+        other_refs = reference_embeddings[:, 1:, :]  
+        other_refs_mask = valid_refs_mask[:, 1:]  
+
+        reference_diff = torch.abs(anchor - other_refs)  
+        reference_diff_masked = reference_diff * other_refs_mask
+
+        num_valid_refs = other_refs_mask.sum(dim=1).clamp(min=1)
+
+        mean_reference_diff = reference_diff_masked.sum(dim=1) / num_valid_refs  
+
+        query_diff = torch.abs(query_embedding.unsqueeze(1) - other_refs) 
+        query_diff_masked = query_diff * other_refs_mask 
+
+        mean_query_diff = query_diff_masked.sum(dim=1) / num_valid_refs  
+
+        x = torch.cat([mean_reference_diff, mean_query_diff], dim=1) 
+        x = self.ann(x)
+        return x
+
+    def get_embedding(self, data: torch.Tensor):
+        return F.normalize(torch.flatten(self.cnn(data),start_dim=1),dim=-1)
+    
+    def forward_old(self, reference_data: torch.Tensor, unknown_data: torch.Tensor, mask):
+
+        B,R,C,H,W = reference_data.shape
+
+        # reference_data_stacked = reference_data.view(B*R, C, H, W)
+        # reference_embeddings_stacked = self.get_embedding(reference_data_stacked)
+        # reference_embeddings = reference_embeddings_stacked.view(B,R,-1)
+        reference_data_stacked = reference_data.view(B*R, C, H, W)
+        flat_mask = mask.view(-1)
+        valid_data = reference_data_stacked[flat_mask.bool()]  
+
+        valid_embeddings = self.get_embedding(valid_data)  
+
+        reference_embeddings = torch.zeros(B*R, valid_embeddings.shape[-1], device=reference_data.device,dtype=valid_embeddings.dtype)
+        reference_embeddings[flat_mask.bool()] = valid_embeddings
+        reference_embeddings = reference_embeddings.view(B, R, -1)
+            
+        query_embedding = self.get_embedding(unknown_data)
+        
+        reference_differential_embeddings = torch.abs(reference_embeddings[:,0:1,:] - reference_embeddings[:,1:,:])
+
+        mean_reference_differential_embedding = torch.mean(reference_differential_embeddings,dim=1)
+
+        query_differential_embeddings = torch.abs(query_embedding.unsqueeze(1) - reference_embeddings[:,1:,:])
+
+        mean_query_differential_embedding = torch.mean(query_differential_embeddings,dim=1)
+
+        x = torch.cat([mean_reference_differential_embedding,mean_query_differential_embedding],dim=1)
+
+        x = self.ann(x)
+
+        return x
 
 class EmbeddingCNN3D(nn.Module):
     """
@@ -171,9 +313,13 @@ class EmbeddingCNN3D(nn.Module):
         #     nn.BatchNorm2d(128),
         #     nn.ReLU(),
         #     nn.AdaptiveAvgPool2d((4,4)), 
-        #     nn.Flatten(),
-        #     nn.Linear(128*4*4,  self._embedding_dim)
         # )
+        # self.ann = nn.Sequential(
+        #     nn.Flatten(),
+        #     nn.Linear(128*4*4, self._embedding_dim),
+        # )
+
+        # resnet is usable but above works just as well on signature dataset, but training time takes longer
 
         resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
         self.cnn = nn.Sequential(*list(resnet.children())[:-1])
@@ -182,23 +328,23 @@ class EmbeddingCNN3D(nn.Module):
             nn.Linear(resnet.fc.in_features, self._embedding_dim),
         )
 
-
-
-
-    def forward(self, reference_data: torch.Tensor, query_data: torch.Tensor,mask:torch.Tensor):
+    def forward(self, reference_data, query_data, mask:torch.Tensor):
+        B, R, C, H, W = reference_data.shape
         
-        # Assume reference_data is shape (batch,num_references,C,H,W)
-        # query_data should be (batch,1,C,H,W,)
-        B,R,C,H,W = reference_data.shape
-        reference_data_stacked = reference_data.reshape(B*R,C,H,W)
-        reference_embeddings = self.get_embedding(reference_data_stacked).reshape(B,R,-1)
+        reference_data_stacked = reference_data.view(B*R, C, H, W)
+        flat_mask = mask.view(-1)
+        valid_data = reference_data_stacked[flat_mask.bool()]  
+
+        valid_embeddings = self.get_embedding(valid_data)  
+
+        reference_embeddings = torch.zeros(B*R, self._embedding_dim, device=reference_data.device,dtype=valid_embeddings.dtype)
+        reference_embeddings[flat_mask.bool()] = valid_embeddings
+        reference_embeddings = reference_embeddings.view(B, R, -1)
 
         query_embedding = self.get_embedding(query_data)
 
         masked_reference_embeddings = reference_embeddings * mask
-        mean_reference_embedding = torch.sum(masked_reference_embeddings,dim=1)/torch.sum(mask,dim=1)
-
-
+        mean_reference_embedding = torch.sum(masked_reference_embeddings, dim=1) / torch.sum(mask, dim=1)
 
         return mean_reference_embedding, query_embedding
 
@@ -212,54 +358,4 @@ class EmbeddingCNN3D(nn.Module):
         Returns:
             torch.Tensor: Embedding for the input data.
         """
-        # data = F.normalize(data,p=2,dim=1)?
-        return self.ann(self.cnn(data))
-
-
-class EmbeddingCNN3D_nomask(nn.Module):
-    """
-    CNN for embedding.
-
-    This model consists of several convolutional layers followed by batch normalization and ReLU activations,
-    designed to process 3D input data. The output from the convolutional layers is flattened.
-
-    Attributes:
-        cnn (nn.Sequential): Convolutional layers followed by batch normalization and ReLU activations.
-    """
-
-    def __init__(self):
-        super(EmbeddingCNN3D_nomask, self).__init__()
-
-        self._embedding_dim = 128
-        resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-        self.cnn = nn.Sequential(*list(resnet.children())[:-1])
-        self.embed_linear =  nn.Sequential(
-            nn.Linear(resnet.fc.in_features, self._embedding_dim),
-            # nn.ReLU(),
-            # nn.Dropout(0.3),
-            # nn.Linear(256, self._embedding_dim)
-        )
-
-    def forward(self, reference_data: torch.Tensor, query_data: torch.Tensor):
-        
-        reference_embedding = self.get_embedding(reference_data)
-        query_embedding = self.get_embedding(query_data)
-
-
-        return reference_embedding, query_embedding
-
-    def get_embedding(self, data: torch.Tensor):
-        """
-        Get the embedding for a single data.
-
-        Args:
-            data (torch.Tensor):  data with shape (batch,   n   , features).
-
-        Returns:
-            torch.Tensor: Embedding for the input data.
-        """
-        data = self.cnn(data)
-        data = torch.flatten(data,1)
-        data = self.embed_linear(data)
-        data = F.normalize(data,p=2,dim=1)
-        return data
+        return F.normalize(self.ann(self.cnn(data)),p=2,dim=1)
