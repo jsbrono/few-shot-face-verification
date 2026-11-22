@@ -171,12 +171,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--config", required=True, type=Path, help="YAML config file")
     parser.add_argument("--seed", type=int, help="overrides train.seed")
     parser.add_argument("--epochs", type=int, help="overrides train.epochs")
+    parser.add_argument("--num-workers", type=int, help="overrides train.num_workers")
     parser.add_argument("--out", type=Path, help="output directory (default: runs/<name>)")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args(argv)
 
     config = load_config(args.config)
-    overrides = {"seed": args.seed, "epochs": args.epochs}
+    overrides = {"seed": args.seed, "epochs": args.epochs, "num_workers": args.num_workers}
     config.train = replace(config.train, **{k: v for k, v in overrides.items() if v is not None})
 
     out_dir = args.out or Path("runs") / f"{args.config.stem}-seed{config.train.seed}"
