@@ -18,7 +18,7 @@ Objective = Literal["contrastive", "triplet", "bce"]
 class DataConfig:
     casia_dir: str = "data/casia-webface"
     lfw_dir: str = "data/lfw-deepfunneled"
-    lfw_pairs: str = "data/pairs.txt"
+    lfw_pairs: str = "data/pairs.csv"
     image_size: int = 112
     # LFW images are 250x250 with the face in the middle; crop before resizing so faces are a
     # similar scale to CASIA-WebFace's tighter crops. null to disable.

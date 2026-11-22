@@ -70,12 +70,12 @@ pip install -e ".[dev]"
 data/
   casia-webface/<person>/<image>.jpg        CASIA-WebFace, one folder per identity
   lfw-deepfunneled/<Name>/<Name>_0001.jpg   LFW (deep-funnelled)
-  pairs.txt                                 LFW's View 2 pairs list
+  pairs.csv                                 LFW's View 2 pairs list
 ```
 
 Both datasets are on Kaggle (for example `ntl0601/casia-webface` and
-`jessicali9530/lfw-dataset`). The pairs file can be the official `pairs.txt` or the Kaggle
-mirror's `pairs.csv`.
+`jessicali9530/lfw-dataset`). The pairs file can be the Kaggle mirror's `pairs.csv` or LFW's
+official `pairs.txt` (set `data.lfw_pairs`).
 
 **Train and evaluate:**
 

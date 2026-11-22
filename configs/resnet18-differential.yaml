@@ -10,7 +10,7 @@ model:
 data:
   casia_dir: data/casia-webface
   lfw_dir: data/lfw-deepfunneled
-  lfw_pairs: data/pairs.txt
+  lfw_pairs: data/pairs.csv
   image_size: 112
 
 train:
