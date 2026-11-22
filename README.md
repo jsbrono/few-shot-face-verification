@@ -46,15 +46,29 @@ references and a query, re-drawn every epoch.
 
 ## Results
 
-Not benchmarked yet. Each config trains and evaluates with one command (see Usage); results will
-go here as:
+ResNet-18 (ImageNet-pretrained), 20 epochs on CASIA-WebFace, one seed each. LFW numbers use
+the standard 6,000 pairs and 10 folds, with each fold's threshold chosen on the other nine. The
+last column is ROC AUC on CASIA identities held out from training, comparing one probe photo
+against 1, 3 or 5 reference photos of the claimed person.
 
 | Config | LFW accuracy | LFW AUC | TAR @ 1% FAR | AUC, 1 / 3 / 5 refs |
 |---|---|---|---|---|
-| `resnet18-triplet` | | | | |
-| `resnet18-contrastive` | | | | |
-| `resnet18-differential` | | | | |
-| `smallcnn-triplet` | | | | |
+| `resnet18-triplet` | **91.7% ± 1.3** | **0.973** | **0.691** | **0.966 / 0.986 / 0.990** |
+| `resnet18-contrastive` | 85.3% ± 1.3 | 0.929 | 0.222 | 0.923 / 0.947 / 0.956 |
+| `resnet18-differential` | 80.4% ± 1.8 | 0.888 | 0.213 | 0.879 / 0.926 / 0.930 |
+
+- **Batch-hard triplet loss is clearly best**, especially at strict thresholds: at 1% false
+  accepts it verifies 69% of genuine pairs, against about 22% for the other two.
+- **Extra reference photos help every model.** Going from one to five references removes about
+  70% of the triplet model's remaining AUC error (0.966 to 0.990).
+- **The triplet loss is a poor progress signal.** It sits at the margin (0.2) for the first 12
+  epochs while validation AUC climbs from 0.55 to 0.97: on the hardest positive and negative in
+  each batch the margin is barely violated, even as the embedding improves for typical pairs.
+  Watch validation AUC, not the loss (`runs/<config>/metrics.json`).
+- The learned verification head (`differential`) is the weakest, probably because it learns the distance
+  function as well as the embedding, from the same data.
+
+`smallcnn-triplet` (a ~100k-parameter CNN) is not benchmarked yet.
 
 ## Usage
 
