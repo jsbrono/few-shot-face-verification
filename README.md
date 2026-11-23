@@ -46,7 +46,7 @@ references and a query, re-drawn every epoch.
 
 ## Results
 
-ResNet-18 (ImageNet-pretrained), 20 epochs on CASIA-WebFace, one seed each. LFW numbers use
+20 epochs on CASIA-WebFace, one seed each. LFW numbers use
 the standard 6,000 pairs and 10 folds, with each fold's threshold chosen on the other nine. The
 last column is ROC AUC on CASIA identities held out from training, comparing one probe photo
 against 1, 3 or 5 reference photos of the claimed person.
@@ -56,6 +56,8 @@ against 1, 3 or 5 reference photos of the claimed person.
 | `resnet18-triplet` | **91.7% ± 1.3** | **0.973** | **0.691** | **0.966 / 0.986 / 0.990** |
 | `resnet18-contrastive` | 85.3% ± 1.3 | 0.929 | 0.222 | 0.923 / 0.947 / 0.956 |
 | `resnet18-differential` | 80.4% ± 1.8 | 0.888 | 0.213 | 0.879 / 0.926 / 0.930 |
+| `smallcnn-contrastive` | 84.3% ± 2.1 | 0.921 | 0.274 | 0.909 / 0.931 / 0.944 |
+| `smallcnn-triplet` | 62.0% ± 1.9 | 0.645 | 0.021 | 0.694 / 0.689 / 0.715 |
 
 - **Batch-hard triplet loss is clearly best**, especially at strict thresholds: at 1% false
   accepts it verifies 69% of genuine pairs, against about 22% for the other two.
@@ -67,8 +69,15 @@ against 1, 3 or 5 reference photos of the claimed person.
   Watch validation AUC, not the loss (`runs/<config>/metrics.json`).
 - The learned verification head (`differential`) is the weakest, probably because it learns the distance
   function as well as the embedding, from the same data.
-
-`smallcnn-triplet` (a ~100k-parameter CNN) is not benchmarked yet.
+- **A small CNN gets close with contrastive loss.** Trained from scratch with about 100k
+  parameters (100 times fewer than ResNet-18), it reaches 84.3% on LFW against the pretrained
+  ResNet-18's 85.3% with the same loss. It is slightly better at strict thresholds (TAR 0.274 vs
+  0.222) and slightly worse with several references (AUC 0.944 vs 0.956 with five).
+- **The small CNN does not learn with batch-hard triplet loss.** Validation AUC stays between
+  0.52 and 0.69 for all 20 epochs (62% on LFW). Batch-hard mining picks the hardest pairs in each batch,
+  which a randomly initialised network cannot yet separate; the pretrained ResNet-18 starts with
+  useful features and gets past this. Pretraining, a softer mining scheme, or a warm-up with
+  contrastive loss would be the next things to try.
 
 ## Usage
 

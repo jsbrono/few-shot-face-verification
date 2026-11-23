@@ -1,0 +1,22 @@
+# Lightweight CNN (about 100k backbone parameters vs 11M) trained from scratch with contrastive
+# loss over all pairs in each batch.
+model:
+  backbone: small_cnn
+  pretrained: false
+  embed_dim: 128
+  head: cosine
+
+data:
+  casia_dir: data/casia-webface
+  lfw_dir: data/lfw-deepfunneled
+  lfw_pairs: data/pairs.csv
+  image_size: 112
+
+train:
+  objective: contrastive
+  margin: 1.0
+  epochs: 20
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  identities_per_batch: 32
+  images_per_identity: 4
